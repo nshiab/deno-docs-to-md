@@ -1,4 +1,4 @@
-# bump-version
+# deno-docs-to-md
 
 A simple script to transform Deno generated `docs.json` to `llm.md`.
 

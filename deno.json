@@ -1,11 +1,11 @@
 {
   "name": "@nshiab/bump-version",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "exports": "./main.ts",
   "tasks": {
-    "patch": "deno run -A main.ts patch",
-    "minor": "deno run -A main.ts minor",
-    "major": "deno run -A main.ts major"
+    "patch": "deno run -A jsr:@nshiab/bump-version patch",
+    "minor": "deno run -A jsr:@nshiab/bump-version minor",
+    "major": "deno run -A jsr:@nshiab/bump-version major"
   },
   "license": "MIT"
 }
