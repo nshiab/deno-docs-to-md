@@ -1,6 +1,6 @@
 {
-  "name": "@nshiab/bump-version",
-  "version": "0.1.5",
+  "name": "@nshiab/deno-docs-to-md",
+  "version": "0.1.6",
   "exports": "./main.ts",
   "tasks": {
     "patch": "deno run -A jsr:@nshiab/bump-version patch",
