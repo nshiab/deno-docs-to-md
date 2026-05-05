@@ -140,7 +140,6 @@ interface DocNode {
   functionDef?: FunctionDef;
   classDef?: ClassDef;
   filename?: string;
-  version?: string;
 }
 
 interface DenoDoc {
