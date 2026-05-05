@@ -1,122 +1,97 @@
 import { assertEquals } from "@std/assert";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
-Deno.test("generate docs for @nshiab/simple-data-analysis", async () => {
-  const lib = "@nshiab/simple-data-analysis";
-  const outputMd = "test/output/simple-data-analysis.test.md";
+Deno.test("generate mixed docs (local + JSR)", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const originalCwd = Deno.cwd();
+  const outputDir = path.join(originalCwd, "test", "output");
+  const testOutputFile = path.join(outputDir, "mixed-local-jsr.test.md");
 
-  // Clean up previous test runs
-  if (fs.existsSync(outputMd)) await Deno.remove(outputMd);
+  // Ensure output directory exists
+  await Deno.mkdir(outputDir, { recursive: true });
 
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", "main.ts", `--jsr=${lib}`],
-  });
+  try {
+    // Setup dummy project structure
+    await Deno.mkdir(path.join(tempDir, "src"), { recursive: true });
+    const localContent =
+      '/** @module Local Library\n * This is a local library.\n */\n\n/** A local function */\nexport function localFn() { return "hello"; }';
+    await Deno.writeTextFile(path.join(tempDir, "src/index.ts"), localContent);
 
-  const { success, stderr } = await command.output();
+    const mainPath = path.join(originalCwd, "main.ts");
 
-  if (!success) {
-    const errorBody = new TextDecoder().decode(stderr);
-    console.error(errorBody);
-  }
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", mainPath, "--jsr=@nshiab/simple-data-analysis-core"],
+      cwd: tempDir,
+    });
 
-  assertEquals(success, true, "Execution should be successful");
+    const { success, stderr } = await command.output();
 
-  const mdExists = fs.existsSync("llm.md");
-  assertEquals(mdExists, true, "llm.md should be generated");
+    if (!success) {
+      console.error(new TextDecoder().decode(stderr));
+    }
 
-  if (mdExists) {
-    await Deno.rename("llm.md", outputMd);
+    assertEquals(success, true, "Execution should be successful");
+
+    const mdPath = path.join(tempDir, "llm.md");
+    const mdExists = fs.existsSync(mdPath);
+    assertEquals(mdExists, true, "llm.md should be generated");
+
+    if (mdExists) {
+      const content = await Deno.readTextFile(mdPath);
+
+      // Save to test/output for inspection
+      await Deno.writeTextFile(testOutputFile, content);
+      console.log(`Test output saved to ${testOutputFile}`);
+
+      // Check for local content
+      assertEquals(
+        content.includes("# Local Library"),
+        true,
+        "Should contain local title",
+      );
+      assertEquals(
+        content.includes("localFn"),
+        true,
+        "Should contain local function",
+      );
+
+      // Check for JSR content
+      assertEquals(
+        content.toLowerCase().includes("data"),
+        true,
+        "Should contain some JSR content (data)",
+      );
+    }
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
   }
 });
 
-Deno.test("generate docs for @nshiab/simple-data-analysis-core", async () => {
-  const lib = "@nshiab/simple-data-analysis-core";
-  const outputMd = "test/output/simple-data-analysis-core.test.md";
+Deno.test("throw error if src/index.ts is missing", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const originalCwd = Deno.cwd();
 
-  // Clean up previous test runs
-  if (fs.existsSync(outputMd)) await Deno.remove(outputMd);
+  try {
+    const mainPath = path.join(originalCwd, "main.ts");
 
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", "main.ts", `--jsr=${lib}`],
-  });
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", mainPath],
+      cwd: tempDir,
+    });
 
-  const { success, stderr } = await command.output();
+    const { success, stderr } = await command.output();
+    const errorOutput = new TextDecoder().decode(stderr);
 
-  if (!success) {
-    const errorBody = new TextDecoder().decode(stderr);
-    console.error(errorBody);
-  }
-
-  assertEquals(success, true, "Execution should be successful");
-
-  const mdExists = fs.existsSync("llm.md");
-  assertEquals(mdExists, true, "llm.md should be generated");
-
-  if (mdExists) {
-    await Deno.rename("llm.md", outputMd);
-  }
-});
-
-Deno.test("generate merged docs for multiple libraries", async () => {
-  const lib = "@nshiab/simple-data-analysis,@nshiab/simple-data-analysis-core";
-  const outputMd = "test/output/merged.test.md";
-
-  // Clean up previous test runs
-  if (fs.existsSync(outputMd)) await Deno.remove(outputMd);
-
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", "main.ts", `--jsr=${lib}`],
-  });
-
-  const { success, stderr } = await command.output();
-
-  if (!success) {
-    const errorBody = new TextDecoder().decode(stderr);
-    console.error(errorBody);
-  }
-
-  assertEquals(success, true, "Execution should be successful");
-
-  const mdExists = fs.existsSync("llm.md");
-  assertEquals(mdExists, true, "llm.md should be generated");
-
-  if (mdExists) {
-    const content = await Deno.readTextFile("llm.md");
-    // Just checking for presence of some content
+    assertEquals(success, false, "Execution should fail");
     assertEquals(
-      content.includes("# The Simple Data Analysis Library"),
+      errorOutput.includes(
+        "Error: Local entrypoint not found at ./src/index.ts",
+      ),
       true,
-      "Should contain the simple-data-analysis title",
+      "Should show correct error message",
     );
-
-    await Deno.rename("llm.md", outputMd);
-  }
-});
-
-Deno.test("generate docs for @nshiab/journalism", async () => {
-  const lib = "@nshiab/journalism";
-  const outputMd = "test/output/journalism.test.md";
-
-  // Clean up previous test runs
-  if (fs.existsSync(outputMd)) await Deno.remove(outputMd);
-
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", "main.ts", `--jsr=${lib}`],
-  });
-
-  const { success, stderr } = await command.output();
-
-  if (!success) {
-    const errorBody = new TextDecoder().decode(stderr);
-    console.error(errorBody);
-  }
-
-  assertEquals(success, true, "Execution should be successful");
-
-  const mdExists = fs.existsSync("llm.md");
-  assertEquals(mdExists, true, "llm.md should be generated");
-
-  if (mdExists) {
-    await Deno.rename("llm.md", outputMd);
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
   }
 });

@@ -732,65 +732,67 @@ function generateMarkdownFromNodes(docNodes: DocNode[], outputPath: string) {
   }
 }
 
-/**
- * Legacy wrapper to generate Markdown from a JSON file.
- */
-function generateMarkdown(jsonPath: string, outputPath: string) {
-  try {
-    console.log(`\nReading from ${jsonPath}...`);
-    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
-    const rawData = JSON.parse(jsonContent);
-    const docNodes: DocNode[] = normalizeDocNodes(rawData);
-    generateMarkdownFromNodes(docNodes, outputPath);
-  } catch (error: unknown) {
-    if ((error as { code: string }).code === "ENOENT") {
-      console.error(`Error: Input file not found at ${jsonPath}`);
-    } else {
-      console.error("An unexpected error occurred:", error);
-    }
-  }
-}
-
 // --- Execution ---
 
 async function run() {
   const args = Deno.args;
-  const inputJson = "docs.json";
   const outputMarkdown = "llm.md";
+  const entrypoint = "./src/index.ts";
 
   const libraries = args
     .filter((arg) => arg.startsWith("--jsr="))
     .flatMap((arg) => arg.split("=")[1].split(","));
 
-  if (libraries.length > 0) {
-    const allDocNodes: DocNode[] = [];
+  const allDocNodes: DocNode[] = [];
 
-    for (let lib of libraries) {
-      if (lib.startsWith("@") && !lib.startsWith("jsr:")) {
-        lib = `jsr:${lib}`;
-      }
-      console.log(`\nFetching docs for ${lib}...`);
+  // Local documentation
+  if (fs.existsSync(entrypoint)) {
+    console.log(`\nGenerating docs for local project (${entrypoint})...`);
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["doc", "--json", entrypoint],
+    });
 
-      const command = new Deno.Command(Deno.execPath(), {
-        args: ["doc", "--json", lib],
-      });
+    const { stdout, stderr, success } = await command.output();
 
-      const { stdout, stderr, success } = await command.output();
-
-      if (!success) {
-        console.error(new TextDecoder().decode(stderr));
-        continue;
-      }
-
-      const rawData = JSON.parse(new TextDecoder().decode(stdout));
-      const normalized = normalizeDocNodes(rawData);
-      allDocNodes.push(...normalized);
+    if (!success) {
+      console.error(new TextDecoder().decode(stderr));
+      Deno.exit(1);
     }
 
-    generateMarkdownFromNodes(allDocNodes, outputMarkdown);
+    const rawData = JSON.parse(new TextDecoder().decode(stdout));
+    const normalized = normalizeDocNodes(rawData);
+    allDocNodes.push(...normalized);
   } else {
-    generateMarkdown(inputJson, outputMarkdown);
+    console.error(
+      `Error: Local entrypoint not found at ${entrypoint}.\nLocal documentation is required for this tool to run in library repositories.`,
+    );
+    Deno.exit(1);
   }
+
+  // JSR libraries
+  for (let lib of libraries) {
+    if (lib.startsWith("@") && !lib.startsWith("jsr:")) {
+      lib = `jsr:${lib}`;
+    }
+    console.log(`\nFetching docs for ${lib}...`);
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["doc", "--json", lib],
+    });
+
+    const { stdout, stderr, success } = await command.output();
+
+    if (!success) {
+      console.error(new TextDecoder().decode(stderr));
+      continue;
+    }
+
+    const rawData = JSON.parse(new TextDecoder().decode(stdout));
+    const normalized = normalizeDocNodes(rawData);
+    allDocNodes.push(...normalized);
+  }
+
+  generateMarkdownFromNodes(allDocNodes, outputMarkdown);
 }
 
 if (import.meta.main) {
