@@ -186,13 +186,6 @@ function normalizeDocNodes(data: DenoDoc): DocNode[] {
             filename: decl.location?.filename,
           };
 
-          if (node.filename) {
-            const versionMatch = node.filename.match(/\/(\d+\.\d+\.\d+)\//);
-            if (versionMatch) {
-              node.version = versionMatch[1];
-            }
-          }
-
           if (decl.kind === "function" && decl.def) {
             node.functionDef = decl.def;
           } else if (decl.kind === "class" && decl.def) {
@@ -692,26 +685,20 @@ function generateMarkdownFromNodes(docNodes: DocNode[], outputPath: string) {
       node.kind === "moduleDoc"
     );
 
-    // Try to find a version from any node
-    const firstNodeWithVersion = docNodes.find((node) => node.version);
-    const libVersion = firstNodeWithVersion?.version
-      ? ` v${firstNodeWithVersion.version}`
-      : "";
-
     if (moduleDoc?.jsDoc?.tags) {
       const moduleTag = moduleDoc.jsDoc.tags.find((tag: JsDocTag) =>
         tag.kind === "module"
       );
       if (moduleTag?.name) {
         const [title, ...description] = moduleTag.name.split("\n");
-        markdownContent += `# ${title.trim()}${libVersion}\n\n`;
+        markdownContent += `# ${title.trim()}\n\n`;
         markdownContent += `${description.join("\n").trim()}\n\n`;
       } else if (moduleDoc.jsDoc.doc) {
-        markdownContent += `# API Reference${libVersion}\n\n`;
+        markdownContent += `# API Reference\n\n`;
         markdownContent += `${moduleDoc.jsDoc.doc.trim()}\n\n`;
       }
     } else {
-      markdownContent += `# API Reference${libVersion}\n\n`;
+      markdownContent += `# API Reference\n\n`;
     }
 
     publicNodes.forEach((node: DocNode) => {
