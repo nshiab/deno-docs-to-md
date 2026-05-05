@@ -624,27 +624,66 @@ const generateClassMarkdown = (node: DocNode): string => {
 
 /**
  * Main function to generate the complete Markdown documentation.
- * @param jsonPath - The path to the input Deno Doc JSON file.
+ * @param docNodes - The list of DocNode objects to document.
  * @param outputPath - The path where the output Markdown file will be saved.
  */
-function generateMarkdown(jsonPath: string, outputPath: string) {
+function generateMarkdownFromNodes(docNodes: DocNode[], outputPath: string) {
   try {
-    console.log(`\nReading from ${jsonPath}...`);
-    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
-    const rawData = JSON.parse(jsonContent);
-    const docNodes: DocNode[] = normalizeDocNodes(rawData);
+    const publicNodes: DocNode[] = [];
+    const seenNames = new Map<string, DocNode>();
 
-    const publicNodes = docNodes
-      .filter((node: DocNode) =>
+    docNodes.forEach((node) => {
+      if (
         node.declarationKind === "export" &&
         (node.kind === "function" || node.kind === "class") &&
         node.jsDoc?.doc &&
         !node.jsDoc?.tags?.some((tag: JsDocTag) => tag.kind === "internal")
-      )
-      .sort((a: DocNode, b: DocNode) => a.name.localeCompare(b.name));
+      ) {
+        const existing = seenNames.get(node.name);
+        if (!existing) {
+          const nodeCopy = JSON.parse(JSON.stringify(node));
+          publicNodes.push(nodeCopy);
+          seenNames.set(node.name, nodeCopy);
+        } else if (node.kind === "class" && existing.kind === "class") {
+          // Merge methods and constructors for classes with the same name
+          // This allows docs from "core" and "extended" libraries to combine
+          if (node.classDef) {
+            if (!existing.classDef) {
+              existing.classDef = {
+                isAbstract: node.classDef.isAbstract,
+                constructors: [],
+                methods: [],
+              };
+            }
+
+            // Merge constructors
+            node.classDef.constructors.forEach((newC) => {
+              const constructorExists = existing.classDef!.constructors.some(
+                (c) => JSON.stringify(c.params) === JSON.stringify(newC.params),
+              );
+              if (!constructorExists) {
+                existing.classDef!.constructors.push(newC);
+              }
+            });
+
+            // Merge methods
+            node.classDef.methods.forEach((newM) => {
+              const methodExists = existing.classDef!.methods.some((m) =>
+                m.name === newM.name
+              );
+              if (!methodExists) {
+                existing.classDef!.methods.push(newM);
+              }
+            });
+          }
+        }
+      }
+    });
+
+    publicNodes.sort((a, b) => a.name.localeCompare(b.name));
 
     console.log(
-      `Found ${publicNodes.length} public functions/classes to document.`,
+      `Found ${publicNodes.length} unique public functions/classes to document.`,
     );
 
     let markdownContent = "";
@@ -689,11 +728,23 @@ function generateMarkdown(jsonPath: string, outputPath: string) {
       `✅ Markdown documentation successfully generated at ${outputPath}\n`,
     );
   } catch (error: unknown) {
+    console.error("An unexpected error occurred during generation:", error);
+  }
+}
+
+/**
+ * Legacy wrapper to generate Markdown from a JSON file.
+ */
+function generateMarkdown(jsonPath: string, outputPath: string) {
+  try {
+    console.log(`\nReading from ${jsonPath}...`);
+    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
+    const rawData = JSON.parse(jsonContent);
+    const docNodes: DocNode[] = normalizeDocNodes(rawData);
+    generateMarkdownFromNodes(docNodes, outputPath);
+  } catch (error: unknown) {
     if ((error as { code: string }).code === "ENOENT") {
       console.error(`Error: Input file not found at ${jsonPath}`);
-      console.error(
-        "Please make sure 'docs.json' is in the same directory as this script.",
-      );
     } else {
       console.error("An unexpected error occurred:", error);
     }
@@ -707,30 +758,39 @@ async function run() {
   const inputJson = "docs.json";
   const outputMarkdown = "llm.md";
 
-  const jsrArg = args.find((arg) => arg.startsWith("--jsr="));
+  const libraries = args
+    .filter((arg) => arg.startsWith("--jsr="))
+    .flatMap((arg) => arg.split("=")[1].split(","));
 
-  if (jsrArg) {
-    let lib = jsrArg.split("=")[1];
-    if (lib.startsWith("@") && !lib.startsWith("jsr:")) {
-      lib = `jsr:${lib}`;
+  if (libraries.length > 0) {
+    const allDocNodes: DocNode[] = [];
+
+    for (let lib of libraries) {
+      if (lib.startsWith("@") && !lib.startsWith("jsr:")) {
+        lib = `jsr:${lib}`;
+      }
+      console.log(`\nFetching docs for ${lib}...`);
+
+      const command = new Deno.Command(Deno.execPath(), {
+        args: ["doc", "--json", lib],
+      });
+
+      const { stdout, stderr, success } = await command.output();
+
+      if (!success) {
+        console.error(new TextDecoder().decode(stderr));
+        continue;
+      }
+
+      const rawData = JSON.parse(new TextDecoder().decode(stdout));
+      const normalized = normalizeDocNodes(rawData);
+      allDocNodes.push(...normalized);
     }
-    console.log(`\nGenerating docs.json for ${lib}...`);
 
-    const command = new Deno.Command(Deno.execPath(), {
-      args: ["doc", "--json", lib],
-    });
-
-    const { stdout, stderr, success } = await command.output();
-
-    if (!success) {
-      console.error(new TextDecoder().decode(stderr));
-      Deno.exit(1);
-    }
-
-    fs.writeFileSync(inputJson, stdout);
+    generateMarkdownFromNodes(allDocNodes, outputMarkdown);
+  } else {
+    generateMarkdown(inputJson, outputMarkdown);
   }
-
-  generateMarkdown(inputJson, outputMarkdown);
 }
 
 if (import.meta.main) {

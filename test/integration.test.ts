@@ -29,6 +29,42 @@ Deno.test("generate docs for @nshiab/simple-data-analysis", async () => {
   }
 });
 
+Deno.test("generate merged docs for multiple libraries", async () => {
+  const lib = "@nshiab/simple-data-analysis,@nshiab/simple-data-analysis-core";
+  const outputMd = "test/output/merged.test.md";
+
+  // Clean up previous test runs
+  if (fs.existsSync(outputMd)) await Deno.remove(outputMd);
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", "main.ts", `--jsr=${lib}`],
+  });
+
+  const { success, stderr } = await command.output();
+
+  if (!success) {
+    const errorBody = new TextDecoder().decode(stderr);
+    console.error(errorBody);
+  }
+
+  assertEquals(success, true, "Execution should be successful");
+
+  const mdExists = fs.existsSync("llm.md");
+  assertEquals(mdExists, true, "llm.md should be generated");
+
+  if (mdExists) {
+    const content = await Deno.readTextFile("llm.md");
+    // Just checking for presence of some content
+    assertEquals(
+      content.includes("# The Simple Data Analysis Library"),
+      true,
+      "Should contain the simple-data-analysis title",
+    );
+
+    await Deno.rename("llm.md", outputMd);
+  }
+});
+
 Deno.test("generate docs for @nshiab/journalism", async () => {
   const lib = "@nshiab/journalism";
   const outputMd = "test/output/journalism.test.md";
