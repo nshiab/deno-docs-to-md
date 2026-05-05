@@ -7,5 +7,8 @@
     "minor": "deno run -A jsr:@nshiab/bump-version minor",
     "major": "deno run -A jsr:@nshiab/bump-version major"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.19"
+  }
 }

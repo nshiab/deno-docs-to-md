@@ -139,6 +139,8 @@ interface DocNode {
   jsDoc?: JsDoc;
   functionDef?: FunctionDef;
   classDef?: ClassDef;
+  filename?: string;
+  version?: string;
 }
 
 interface DenoDoc {
@@ -181,7 +183,15 @@ function normalizeDocNodes(data: DenoDoc): DocNode[] {
             kind: decl.kind,
             declarationKind: decl.declarationKind,
             jsDoc: decl.jsDoc,
+            filename: decl.location?.filename,
           };
+
+          if (node.filename) {
+            const versionMatch = node.filename.match(/\/(\d+\.\d+\.\d+)\//);
+            if (versionMatch) {
+              node.version = versionMatch[1];
+            }
+          }
 
           if (decl.kind === "function" && decl.def) {
             node.functionDef = decl.def;
@@ -642,17 +652,27 @@ function generateMarkdown(jsonPath: string, outputPath: string) {
     const moduleDoc = docNodes.find((node: DocNode) =>
       node.kind === "moduleDoc"
     );
+
+    // Try to find a version from any node
+    const firstNodeWithVersion = docNodes.find((node) => node.version);
+    const libVersion = firstNodeWithVersion?.version
+      ? ` v${firstNodeWithVersion.version}`
+      : "";
+
     if (moduleDoc?.jsDoc?.tags) {
       const moduleTag = moduleDoc.jsDoc.tags.find((tag: JsDocTag) =>
         tag.kind === "module"
       );
       if (moduleTag?.name) {
         const [title, ...description] = moduleTag.name.split("\n");
-        markdownContent += `# ${title.trim()}\n\n`;
+        markdownContent += `# ${title.trim()}${libVersion}\n\n`;
         markdownContent += `${description.join("\n").trim()}\n\n`;
+      } else if (moduleDoc.jsDoc.doc) {
+        markdownContent += `# API Reference${libVersion}\n\n`;
+        markdownContent += `${moduleDoc.jsDoc.doc.trim()}\n\n`;
       }
     } else {
-      markdownContent += "# API Reference\n\n";
+      markdownContent += `# API Reference${libVersion}\n\n`;
     }
 
     publicNodes.forEach((node: DocNode) => {
@@ -681,7 +701,38 @@ function generateMarkdown(jsonPath: string, outputPath: string) {
 }
 
 // --- Execution ---
-const inputJson = "docs.json";
-const outputMarkdown = "llm.md";
 
-generateMarkdown(inputJson, outputMarkdown);
+async function run() {
+  const args = Deno.args;
+  const inputJson = "docs.json";
+  const outputMarkdown = "llm.md";
+
+  const jsrArg = args.find((arg) => arg.startsWith("--jsr="));
+
+  if (jsrArg) {
+    let lib = jsrArg.split("=")[1];
+    if (lib.startsWith("@") && !lib.startsWith("jsr:")) {
+      lib = `jsr:${lib}`;
+    }
+    console.log(`\nGenerating docs.json for ${lib}...`);
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["doc", "--json", lib],
+    });
+
+    const { stdout, stderr, success } = await command.output();
+
+    if (!success) {
+      console.error(new TextDecoder().decode(stderr));
+      Deno.exit(1);
+    }
+
+    fs.writeFileSync(inputJson, stdout);
+  }
+
+  generateMarkdown(inputJson, outputMarkdown);
+}
+
+if (import.meta.main) {
+  run();
+}
