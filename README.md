@@ -1,26 +1,48 @@
 # deno-docs-to-md
 
-A simple script to transform Deno generated `docs.json` to `llm.md`.
+Transform Deno documentation into a single `llm.md` file, perfect for providing
+context to LLMs. It automatically combines local source code documentation with
+optional secondary libraries from JSR.
 
 ## Usage
 
-You can generate documentation for a single JSR library:
+This tool is designed to be run within a library repository. It requires a
+`./src/index.ts` file to exist.
+
+### Basic Usage (Local Only)
+
+Generate documentation for your local library:
 
 ```bash
-deno run -A jsr:@nshiab/deno-docs-to-md --jsr=@nshiab/journalism
+deno run -A jsr:@nshiab/deno-docs-to-md
 ```
 
-Or merge multiple libraries into a single documentation file. This is useful
-when a library extends another one (e.g., `simple-data-analysis` extending
-`simple-data-analysis-core`). Note that the order matters: the first library's
-title and module documentation will be used, and if symbols with the same name
-exist in multiple libraries, the first one encountered will be kept:
+### Including Secondary Libraries (JSR)
+
+You can specify one or more secondary libraries to merge into your documentation
+using the `--jsr` flag. This is useful when your library depends on or extends
+others:
 
 ```bash
-deno run -A jsr:@nshiab/deno-docs-to-md --jsr=@nshiab/simple-data-analysis,@nshiab/simple-data-analysis-core
+deno run -A jsr:@nshiab/deno-docs-to-md --jsr=@nshiab/simple-data-analysis-core
 ```
 
-The output will be saved to `llm.md`.
+Multiple libraries can be comma-separated:
+
+```bash
+deno run -A jsr:@nshiab/deno-docs-to-md --jsr=@std/assert,@std/path
+```
+
+The tool will use the local library's title and module documentation (from
+`./src/index.ts`) as the primary heading. Subsequent symbols from JSR libraries
+will be appended.
+
+The output is always saved to `llm.md`.
+
+## Requirements
+
+- [Deno](https://deno.com/) installed.
+- A `./src/index.ts` file in the current directory.
 
 ## Maintenance
 

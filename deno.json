@@ -1,6 +1,6 @@
 {
   "name": "@nshiab/deno-docs-to-md",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "exports": "./main.ts",
   "tasks": {
     "patch": "deno fmt && deno check && deno lint && deno test -A && deno run -A jsr:@nshiab/bump-version patch",
